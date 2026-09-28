@@ -15,7 +15,7 @@ import (
 func TestSidecarBridge(t *testing.T) {
 	root := os.Getenv("PAPERKO_ENGINE_ROOT")
 	if root == "" {
-		root = "/Volumes/LLM-model/App-develop/PDF-translator"
+		root = "/Volumes/LLM-model/App-develop/PaperKo"
 	}
 	python := filepath.Join(root, ".venv", "bin", "python")
 	if _, err := os.Stat(python); err != nil {
