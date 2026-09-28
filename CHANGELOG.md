@@ -44,7 +44,7 @@ under the **same** version number; the JSON-RPC `protocol_version` and IR
 ### Changed
 - **Licensed under AGPL-3.0.** PaperKo bundles PyMuPDF (AGPL-3.0), so the combined work
   is distributed under AGPL-3.0 with full corresponding source published at
-  `mikwon3/PDF-translator`.
+  `mikwon3/PaperKo`.
 - Bundled Python no longer ships pip console scripts (smaller bundle).
 
 ## [1.8.3] — 2026-09-03

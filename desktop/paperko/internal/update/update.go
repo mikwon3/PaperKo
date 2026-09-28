@@ -26,8 +26,8 @@ import (
 	"time"
 )
 
-// Repo 는 설치본을 올리는 **공개** 저장소다. 소스 저장소(mikwon3/PDF-translator)는 비공개라
-// 앱이 읽을 수 없으므로, 설치본과 manifest 는 이 공개 저장소의 릴리스에 올린다.
+// Repo 는 설치본을 올리는 **공개** 배포 저장소다. 소스(mikwon3/PaperKo)와 분리해,
+// 설치본과 manifest 는 이 저장소의 릴리스에 올린다.
 const Repo = "mikwon3/PaperKo-releases"
 
 // ManifestName 과 SignatureName 은 릴리스마다 올리는 두 파일의 이름이다.
