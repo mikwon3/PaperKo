@@ -30,6 +30,9 @@ ARCH="$(uname -m)"   # arm64 (Apple Silicon) or x86_64
 OUT_DMG="${1:-$HOME/Downloads/PaperKo-${VERSION}-${ARCH}.dmg}"
 STAGE="$(mktemp -d /tmp/paperko_dmg.XXXXXX)"
 
+echo "==> generating Wails bindings (frontend imports them)"
+wails3 generate bindings >/dev/null 2>&1 || echo "    (bindings step skipped)"
+
 echo "==> 1/6  building frontend"
 ( cd frontend && npm run build )
 
