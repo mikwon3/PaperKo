@@ -55,8 +55,8 @@ if [ -z "${SKIP_BUILD:-}" ]; then
   echo "== Windows 빌드 (SSH) =="
   ( cd "$ROOT" && ./push-to-windows.sh --build )
   ssh "${PAPERKO_WIN_HOST:-nablamd-win}" \
-    "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PAPERKO_WIN_DEST:-C:/App-windows/PDF-translator}/desktop/paperko/scripts/package-windows.ps1\""
-  scp "${PAPERKO_WIN_HOST:-nablamd-win}:${PAPERKO_WIN_DEST:-C:/App-windows/PDF-translator}/desktop/paperko/bin/PaperKo-$VERSION-amd64-installer.exe" "$EXE"
+    "powershell -NoProfile -ExecutionPolicy Bypass -File \"${PAPERKO_WIN_DEST:-C:/App-windows/PaperKo}/desktop/paperko/scripts/package-windows.ps1\""
+  scp "${PAPERKO_WIN_HOST:-nablamd-win}:${PAPERKO_WIN_DEST:-C:/App-windows/PaperKo}/desktop/paperko/bin/PaperKo-$VERSION-amd64-installer.exe" "$EXE"
 else
   echo "(SKIP_BUILD) bin/ 의 설치본을 사용합니다"
   cp "$APP_DIR/bin/PaperKo-$VERSION-$ARCH.dmg" "$DMG"

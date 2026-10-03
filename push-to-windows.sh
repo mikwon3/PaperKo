@@ -14,7 +14,7 @@ set -euo pipefail
 # SSH 대상은 ~/.ssh/config 의 Host 별칭(기본 nablamd-win: 203.255.40.88:60, 키인증).
 
 HOST="${PDF_WIN_HOST:-nablamd-win}"
-DEST="${PDF_WIN_DEST:-C:/App-windows/PDF-translator}"
+DEST="${PDF_WIN_DEST:-C:/App-windows/PaperKo}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # macOS tar 는 확장 속성을 `._이름`(AppleDouble)로 함께 넣는다. 그 이진 파일이
