@@ -78,12 +78,25 @@ gh release create "v$VERSION" --repo "$RELEASES" --title "PaperKo $VERSION" --no
   "$DMG" "$EXE" "$OUT/manifest.json" "$OUT/manifest.json.sig"
 git -C "$ROOT" push -q origin HEAD --tags
 
-# 릴리스 저장소 README 의 "변경 이력" 섹션에 이번 판을 넣는다(최신순, 중복 시 교체).
+# 오래된 릴리스 정리 — 배포 저장소에 최신 KEEP_RELEASES 판만 남긴다(설치본·태그 함께 삭제).
+# 판이 무한정 쌓이지 않게 한다. KEEP_RELEASES 로 개수를 바꿀 수 있다(기본 2).
+KEEP_RELEASES="${KEEP_RELEASES:-2}"
+echo "== 오래된 릴리스 정리 (최신 $KEEP_RELEASES 판만 유지) =="
+gh release list --repo "$RELEASES" --json tagName,createdAt \
+  --jq 'sort_by(.createdAt)|reverse|.[].tagName' \
+  | tail -n +$((KEEP_RELEASES + 1)) | while IFS= read -r oldtag; do
+    [ -n "$oldtag" ] || continue
+    echo "  삭제: $oldtag"
+    gh release delete "$oldtag" --repo "$RELEASES" --cleanup-tag --yes || true
+  done
+
+# 릴리스 저장소 README 의 "변경 이력" 섹션에 이번 판을 넣는다(최신순, 중복 시 교체,
+# 최신 KEEP_RELEASES 판만 유지해 릴리스 목록과 맞춘다).
 echo "== 릴리스 저장소 README 변경 이력 갱신 =="
 TAG_URL="https://github.com/$RELEASES/releases/tag/v$VERSION"
 RELDIR="$(mktemp -d)"; trap 'rm -f "$TOOL"; rm -rf "$RELDIR"' EXIT
 if gh repo clone "$RELEASES" "$RELDIR" -- -q --depth 1; then
-  if python3 "$APP_DIR/scripts/update-release-readme.py" "$RELDIR/README.md" "$VERSION" "$NOTES" "$TAG_URL" \
+  if python3 "$APP_DIR/scripts/update-release-readme.py" "$RELDIR/README.md" "$VERSION" "$NOTES" "$TAG_URL" "$KEEP_RELEASES" \
      && [ -n "$(git -C "$RELDIR" status --porcelain -- README.md)" ]; then
     git -C "$RELDIR" add README.md
     git -C "$RELDIR" commit -q -m "README: add $VERSION to release history"

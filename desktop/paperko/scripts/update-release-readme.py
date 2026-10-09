@@ -42,9 +42,10 @@ def summarize(notes: str) -> str:
 
 
 def main() -> int:
-    if len(sys.argv) != 5:
-        sys.exit("usage: update-release-readme.py <README.md> <version> <notes.md> <tag_url>")
+    if len(sys.argv) not in (5, 6):
+        sys.exit("usage: update-release-readme.py <README.md> <version> <notes.md> <tag_url> [keep]")
     readme_path, version, notes_path, tag_url = sys.argv[1:5]
+    keep = int(sys.argv[5]) if len(sys.argv) == 6 else 2   # 최신 몇 판만 남길지
 
     text = open(readme_path, encoding="utf-8").read()
     notes = open(notes_path, encoding="utf-8").read()
@@ -71,9 +72,11 @@ def main() -> int:
         r"(?ms)^### \[" + re.escape(version) + r"\]\(.*?(?=^### \[|\Z)", "", entries
     ).strip()
 
-    new_body = intro + "\n\n" + entry.strip()
-    if entries:
-        new_body += "\n\n" + entries
+    # 새 항목을 맨 위에 두고, 버전 블록(### [..]) 기준으로 최신 keep 개만 남긴다.
+    combined = entry.strip() + ("\n\n" + entries if entries else "")
+    blocks = [b.strip() for b in re.split(r"(?m)(?=^### \[)", combined) if b.strip()]
+    combined = "\n\n".join(blocks[:keep])
+    new_body = intro + "\n\n" + combined
     new_text = "\n".join(head) + "\n\n" + new_body + "\n\n" + "\n".join(tail)
     # 과한 빈 줄 정리
     new_text = re.sub(r"\n{3,}", "\n\n", new_text).rstrip() + "\n"
