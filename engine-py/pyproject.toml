@@ -1,6 +1,6 @@
 [project]
 name = "translate_engine"
-version = "1.8.6"
+version = "1.8.7"
 description = "PaperKo — academic PDF → Korean translation engine (parse · layout · translate · re-render)"
 requires-python = ">=3.11"
 dependencies = [

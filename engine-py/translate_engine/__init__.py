@@ -11,7 +11,7 @@ The package is usable three ways:
 * As an app sidecar ``python -m translate_engine`` (stdio JSON-RPC 2.0 server)
 """
 
-__version__ = "1.8.6"
+__version__ = "1.8.7"
 PROTOCOL_VERSION = "1.0"
 IR_VERSION = "1.0"
 

@@ -1,10 +1,10 @@
 {
 	"fixed": {
-		"file_version": "1.8.6"
+		"file_version": "1.8.7"
 	},
 	"info": {
 		"0000": {
-			"ProductVersion": "1.8.6",
+			"ProductVersion": "1.8.7",
 			"CompanyName": "Minho Kwon (@mikwon3)",
 			"FileDescription": "PaperKo — 학술 논문 PDF 한국어 번역",
 			"LegalCopyright": "© 2026 Minho Kwon · AGPL-3.0",
