@@ -5,6 +5,15 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.7] — 2026-10-10
+
+### Changed
+- **Build/release tooling only — no app behavior change.** `release.sh` now prunes the
+  distribution repo after publishing, keeping only the newest 2 releases (release + tag)
+  and trimming the releases-repo README to match (override with `KEEP_RELEASES`).
+  Unified all repo/folder names to `PaperKo` (source, releases, local, and the Windows
+  build dir `C:/App-windows/PaperKo`).
+
 ## [1.8.6] — 2026-09-26
 
 ### Changed
