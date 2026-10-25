@@ -120,6 +120,7 @@ class Placeholder:
     kind: str                    # math | citation | url | code
     raw: str                     # original text to restore
     span_ref: list[Any] | None = None
+    latex: str = ""              # inline-math LaTeX (export → native equation); "" = none
 
 
 @dataclass

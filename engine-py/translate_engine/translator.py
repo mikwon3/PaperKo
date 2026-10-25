@@ -201,6 +201,10 @@ class Translator:
         marks: list[dict] = []
         for b in blocks:
             marks.extend(b.inline_marks)
+        latex_by: dict[tuple[str, str], str] = {}
+        for m in marks:
+            if m.get("raw") and m.get("latex"):
+                latex_by.setdefault((m["kind"], m["raw"]), m["latex"])
         # longest raw first so nested spans mask cleanly
         marks = sorted(
             {(m["kind"], m["raw"]) for m in marks if m.get("raw")},
@@ -217,7 +221,8 @@ class Translator:
             key = f"{prefix}{counters[prefix]}"
             token = f"⟦{key}⟧"
             masked = masked.replace(raw, token, 1)
-            placeholders.append(Placeholder(key=key, kind=kind, raw=raw))
+            placeholders.append(Placeholder(key=key, kind=kind, raw=raw,
+                                            latex=latex_by.get((kind, raw), "")))
         return masked, placeholders
 
     # ------------------------------------------------------------------ #

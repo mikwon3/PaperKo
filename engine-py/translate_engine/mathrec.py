@@ -198,6 +198,74 @@ def ocr_latex(png: bytes) -> str | None:
 
 
 # --------------------------------------------------------------------------- #
+# inline math — unicode → LaTeX (born-digital math-font spans)
+# --------------------------------------------------------------------------- #
+_GREEK = {
+    "α": r"\alpha", "β": r"\beta", "γ": r"\gamma", "δ": r"\delta", "ε": r"\varepsilon",
+    "ζ": r"\zeta", "η": r"\eta", "θ": r"\theta", "ι": r"\iota", "κ": r"\kappa",
+    "λ": r"\lambda", "μ": r"\mu", "ν": r"\nu", "ξ": r"\xi", "π": r"\pi", "ρ": r"\rho",
+    "σ": r"\sigma", "τ": r"\tau", "υ": r"\upsilon", "φ": r"\phi", "χ": r"\chi",
+    "ψ": r"\psi", "ω": r"\omega", "ϕ": r"\phi", "Γ": r"\Gamma", "Δ": r"\Delta",
+    "Θ": r"\Theta", "Λ": r"\Lambda", "Ξ": r"\Xi", "Π": r"\Pi", "Σ": r"\Sigma",
+    "Φ": r"\Phi", "Ψ": r"\Psi", "Ω": r"\Omega",
+}
+_OPS = {
+    "≤": r"\leq", "≥": r"\geq", "≠": r"\neq", "≈": r"\approx", "×": r"\times",
+    "÷": r"\div", "±": r"\pm", "∓": r"\mp", "⋅": r"\cdot", "·": r"\cdot",
+    "−": "-", "∞": r"\infty", "∑": r"\sum", "∏": r"\prod", "∫": r"\int",
+    "√": r"\sqrt{}", "∂": r"\partial", "∇": r"\nabla", "∈": r"\in", "→": r"\to",
+}
+_SUBS = {"₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5", "₆": "6",
+         "₇": "7", "₈": "8", "₉": "9", "₊": "+", "₋": "-", "ₙ": "n", "ᵢ": "i"}
+_SUPS = {"⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6",
+         "⁷": "7", "⁸": "8", "⁹": "9", "⁺": "+", "⁻": "-"}
+_HAS_MATH_RE = re.compile("[" + "".join(_GREEK) + "".join(_OPS) + "".join(_SUBS)
+                          + "".join(_SUPS) + "]")
+
+
+def inline_unicode_to_latex(raw: str) -> str:
+    """Best-effort LaTeX for an inline math fragment from a born-digital span.
+
+    Returns "" when the fragment carries no real math (so we don't turn ordinary
+    words/citations into equations). Handles Greek letters, operators and unicode
+    sub/superscripts; ``_``/``^`` ASCII subscripts are wrapped in braces.
+    """
+    s = (raw or "").strip()
+    if not s or not _HAS_MATH_RE.search(s):
+        return ""
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        ch = s[i]
+        if ch in _GREEK:
+            out.append(_GREEK[ch] + " ")
+        elif ch in _OPS:
+            out.append(_OPS[ch])
+        elif ch in _SUBS:
+            run = ""
+            while i < len(s) and s[i] in _SUBS:
+                run += _SUBS[s[i]]; i += 1
+            out.append("_{" + run + "}"); continue
+        elif ch in _SUPS:
+            run = ""
+            while i < len(s) and s[i] in _SUPS:
+                run += _SUPS[s[i]]; i += 1
+            out.append("^{" + run + "}"); continue
+        elif ch == "_" and i + 1 < len(s):
+            j = i + 1
+            run = ""
+            while j < len(s) and s[j].isalnum():
+                run += s[j]; j += 1
+            if run:
+                out.append("_{" + run + "}"); i = j; continue
+            out.append("_")
+        else:
+            out.append(ch)
+        i += 1
+    return re.sub(r"\s+", " ", "".join(out)).strip()
+
+
+# --------------------------------------------------------------------------- #
 # document-level pass
 # --------------------------------------------------------------------------- #
 def _area(b) -> float:

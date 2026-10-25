@@ -660,11 +660,14 @@ def _detect_inline_marks(block: Block) -> list[dict]:
         marks.append({"kind": "citation", "raw": m.group(0)})
     for m in _AUTHOR_YEAR_RE.finditer(text):
         marks.append({"kind": "citation", "raw": m.group(0)})
-    # inline math from math-font spans
+    # inline math from math-font spans (born-digital). Carry a best-effort LaTeX so
+    # export can render it as a native inline equation; prose/PDF keep the raw text.
+    from .mathrec import inline_unicode_to_latex
     for ln in block.lines:
         for sp in ln.spans:
             if _MATH_FONT_RE.search(sp.font) and sp.text.strip():
-                marks.append({"kind": "math", "raw": sp.text.strip()})
+                raw = sp.text.strip()
+                marks.append({"kind": "math", "raw": raw, "latex": inline_unicode_to_latex(raw)})
     # de-dup preserving order, longest first so nested matches mask cleanly
     seen: set[tuple[str, str]] = set()
     uniq: list[dict] = []
