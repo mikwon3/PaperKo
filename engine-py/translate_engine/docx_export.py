@@ -25,6 +25,7 @@ from docx.oxml.ns import qn
 from docx.shared import Emu, Pt
 
 from .ir import Document, TranslationResult
+from .latex_omml import latex_to_omml_element
 from .renderer import _strip_math_delims
 
 _PAGE_NUM_RE = re.compile(r"^[\-–—\s]*\d{1,4}[\-–—\s]*$")   # "- 6 -", "12"
@@ -466,6 +467,30 @@ def _emit_table(d, spec: dict, grid: list[list[str]]) -> None:
                 table.cell(r, c).text = grid[r][c]
 
 
+def _emit_formula(d, block, align_center: bool = True) -> bool:
+    """Emit a block equation as a native Word (OMML) equation.
+
+    Returns True when the block's recognised LaTeX was converted and inserted; the
+    same OMML is later turned into a native Hangul equation by the hwpx converter.
+    Returns False (caller falls back to plain text) when there is no LaTeX or the
+    conversion is not possible.
+    """
+    latex = (getattr(block, "latex", "") or "").strip()
+    if not latex:
+        return False
+    el = latex_to_omml_element(latex)
+    if el is None:
+        return False
+    p = d.add_paragraph()
+    if align_center:
+        p.alignment = 1  # center displayed equations
+    try:
+        p._p.append(el)
+    except Exception:
+        return False
+    return True
+
+
 def _emit_figure(d, pdf_page, bbox: tuple, tmpdir: Path, idx: int, avail_pt: float) -> None:
     """Rasterize a figure region (vector or raster) and embed it, centered."""
     try:
@@ -524,6 +549,7 @@ def export_docx(doc: Document, tr: TranslationResult, out_path: Path,
     tmpdir = Path(tempfile.mkdtemp(prefix="paperko_fig_"))
     cur_ncol: int | None = None
     emitted_tu: set[str] = set()
+    fml_idx = 0                     # unique index for rasterised formula-image fallbacks
     first_page = True
     try:
         for page in sorted(doc.pages, key=lambda p: p.index):
@@ -670,6 +696,17 @@ def export_docx(doc: Document, tr: TranslationResult, out_path: Path,
                             if tu.id in emitted_tu:
                                 continue
                             emitted_tu.add(tu.id)
+                        if blk.type == "formula":
+                            if _emit_formula(d, blk):
+                                continue          # native OMML equation (→ hwpx too)
+                            if pdf_page is not None:
+                                # not recognised: keep the ORIGINAL equation as an
+                                # image rather than the garbled math-font text.
+                                fml_idx += 1
+                                with contextlib.suppress(Exception):
+                                    _emit_figure(d, pdf_page, tuple(blk.bbox), tmpdir,
+                                                 10000 + fml_idx, avail)
+                                    continue
                         _emit(d, blk.type, blk_text(blk))
 
         if pdf is not None:

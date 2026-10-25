@@ -565,7 +565,7 @@ def _classify_blocks(blocks: list[Block], *, page_index: int, width: float, heig
             in_references = True
         elif in_references:
             blk.type = "reference"
-        elif _is_formula(blk):
+        elif _is_formula(blk) or _is_ocr_formula(blk):
             blk.type = "formula"
         elif page_index == 0 and st.font_size >= body_size * 1.6 and y0 < height * 0.4:
             blk.type = "title"
@@ -586,6 +586,46 @@ def _classify_blocks(blocks: list[Block], *, page_index: int, width: float, heig
         # page numbers / very short footers need no translation
         if blk.type in {"header", "footer"} and len(text.strip()) <= 6:
             blk.translate = False
+
+
+# Labelled display equation ("Equation 10.7", "Eq. 5", "식 (3)").
+_EQ_LABEL_RE = re.compile(r"\b(?:Equation|Eq\.?|식)\s*\(?\s*\d+(?:\.\d+)?", re.I)
+_MATH_SYMS = set("=+×÷*/^_<>≤≥≈≠±~|()[]{}∑∏∫√∞")
+
+
+def _is_ocr_formula(block: Block) -> bool:
+    """Catch equations in scanned/OCR'd PDFs, where the math-font signal is gone.
+
+    OCR turns a printed equation into garbled text (``Aro? rpf epr + … = …``) with no
+    CMMI/CMSY fonts, so ``_is_formula`` misses it. We instead look at the *shape* of
+    the text: a short block that is mostly operators, digits and one/two-character
+    tokens — optionally carrying an "Equation N.N" label — and crucially NOT a normal
+    prose sentence (which has many long dictionary words). Kept conservative so real
+    paragraphs are never skipped.
+    """
+    text = block.text().strip()
+    if not text or len(text) > 160:
+        return False
+    words = text.split()
+    chars = [c for c in text if not c.isspace()]
+    if not words or not chars:
+        return False
+    has_eq = "=" in text
+    label = bool(_EQ_LABEL_RE.search(text))
+    if not (has_eq or label):
+        return False
+    sym_ratio = sum(1 for c in chars if c in _MATH_SYMS or c.isdigit()) / len(chars)
+    short = sum(1 for w in words if len(w) <= 2
+                or any(ch.isdigit() or ch in _MATH_SYMS for ch in w))
+    short_ratio = short / len(words)
+    longwords = sum(1 for w in words if len(w) >= 4 and w.isalpha())
+    # (1) strong math shape: an '=' with lots of symbols and short tokens;
+    # (2) a labelled equation that is math-heavy and not a prose reference to it.
+    if has_eq and sym_ratio >= 0.22 and short_ratio >= 0.5 and longwords <= 4:
+        return True
+    if label and (has_eq or sym_ratio >= 0.25) and longwords <= 3:
+        return True
+    return False
 
 
 def _is_formula(block: Block) -> bool:
