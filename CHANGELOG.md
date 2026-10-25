@@ -5,6 +5,23 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.8] — 2026-10-25
+
+### Added
+- **Equation recognition → native Word/Hangul equations.** PDF equations (previously
+  translated into garbled math-font/OCR text) are now read from the rendered image,
+  transcribed to LaTeX, and exported as native Word math (OMML) and native Hangul (HWPX)
+  equations — both display equations and inline math (inline needs a digital-source PDF).
+  Scanned/OCR'd documents' display equations are detected by their "Equation N.N" labels.
+  Recognition uses a vision-capable LLM (Qwen-VL / GPT-4o / Claude / Gemini …) with a
+  bundled offline ONNX math-OCR fallback (`rapid_latex_ocr`); when neither works the
+  original equation image is preserved rather than garbled text. See `mathrec`,
+  `latex_omml` and `_is_ocr_formula`.
+
+### Changed
+- Bundle size grows (onnxruntime + math-OCR models) to ship the offline equation
+  fallback by default.
+
 ## [1.8.7] — 2026-10-10
 
 ### Changed

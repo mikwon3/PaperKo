@@ -35,6 +35,18 @@ AGPL 은 결합 저작물 전체의 소스를 같은 조건으로 공개할 것�
 | httpx | 0.28.1 | BSD-3-Clause |
 | pysbd | 0.3.4 | MIT |
 | python-docx | 1.2.0 | MIT |
+| latex2mathml | — | MIT |
+| mathml2omml | — | MIT |
+
+수식 인식(이미지→LaTeX) 폴백으로 담기는 것들(비전 LLM이 1순위, 아래는 오프라인 대비):
+
+| 꾸러미 | 판본 | 라이선스 |
+|---|---|---|
+| rapid_latex_ocr | — | Apache-2.0 |
+| onnxruntime | — | MIT |
+| Pillow | — | MIT-CMU (HPND) |
+| requests | — | Apache-2.0 |
+| RapidLaTeXOCR ONNX 모델(pix2tex 유래) | v0.0.0 | MIT (pix2tex/LaTeX-OCR) |
 
 선택 의존성: `pyahocorasick`(fast), `matplotlib`(math) — 기본으로는 담기지 않는다.
 
