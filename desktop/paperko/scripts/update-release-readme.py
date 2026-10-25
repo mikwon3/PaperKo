@@ -41,6 +41,17 @@ def summarize(notes: str) -> str:
     return "\n".join(demoted).strip()
 
 
+def _bump_download_links(text: str, version: str) -> str:
+    """Point the README's direct-download links at the new version's installers."""
+    sv = r"\d+\.\d+\.\d+"
+    text = re.sub(r"releases/download/v" + sv + r"/PaperKo-" + sv + r"-",
+                  f"releases/download/v{version}/PaperKo-{version}-", text)
+    text = re.sub(r"PaperKo-" + sv + r"-(arm64\.dmg|amd64-installer\.exe)",
+                  rf"PaperKo-{version}-\1", text)
+    text = re.sub(r"최신 설치본 \(" + sv + r"\)", f"최신 설치본 ({version})", text)
+    return text
+
+
 def main() -> int:
     if len(sys.argv) not in (5, 6):
         sys.exit("usage: update-release-readme.py <README.md> <version> <notes.md> <tag_url> [keep]")
@@ -80,6 +91,7 @@ def main() -> int:
     new_text = "\n".join(head) + "\n\n" + new_body + "\n\n" + "\n".join(tail)
     # 과한 빈 줄 정리
     new_text = re.sub(r"\n{3,}", "\n\n", new_text).rstrip() + "\n"
+    new_text = _bump_download_links(new_text, version)
 
     if new_text == text:
         print("  (README 변경 이력에 바뀐 내용 없음)")
