@@ -8,11 +8,20 @@ dependencies = [
     "httpx>=0.27",
     "pysbd>=0.3.4",
     "python-docx>=1.1",   # DOCX export + intermediate for HWPX conversion
+    "latex2mathml>=3.77", # equation LaTeX → MathML …
+    "mathml2omml>=0.0.2", # … → OMML (native Word math; HWPX converter reads it too)
 ]
 
 [project.optional-dependencies]
 fast = ["pyahocorasick>=2.0"]
 math = ["matplotlib>=3.7"]   # inline-math rendering ($…$ → image); off by default
+# Offline equation recognition fallback (ONNX math-OCR) for when the configured
+# LLM has no vision. Bundled by default via the build scripts.
+mathocr = [
+    "rapid_latex_ocr>=0.0.9",
+    "requests>=2.25",   # undeclared runtime dep of rapid_latex_ocr
+    "pillow>=10",       # tight-crop the equation image before OCR
+]
 dev = ["pytest>=8", "ruff>=0.5"]
 
 [project.scripts]

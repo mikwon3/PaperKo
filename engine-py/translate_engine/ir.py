@@ -72,6 +72,7 @@ class Block:
     style_summary: StyleSummary = field(default_factory=StyleSummary)
     confidence: float = 1.0
     inline_marks: list[dict[str, Any]] = field(default_factory=list)  # math/citation/url spans
+    latex: str = ""              # recognised LaTeX for type=="formula" blocks (empty = not recognised)
 
     def text(self) -> str:
         parts: list[str] = []
@@ -119,6 +120,7 @@ class Placeholder:
     kind: str                    # math | citation | url | code
     raw: str                     # original text to restore
     span_ref: list[Any] | None = None
+    latex: str = ""              # inline-math LaTeX (export → native equation); "" = none
 
 
 @dataclass
@@ -302,6 +304,7 @@ def _block_from_dict(d: dict[str, Any]) -> Block:
         style_summary=StyleSummary(**style) if style else StyleSummary(),
         confidence=d.get("confidence", 1.0),
         inline_marks=d.get("inline_marks", []),
+        latex=d.get("latex", ""),
     )
 
 

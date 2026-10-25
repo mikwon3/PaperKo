@@ -34,8 +34,15 @@ echo "==> installing engine + deps into the bundled runtime"
 # deps first (safely upgradeable), then the engine with --ignore-installed so a
 # prior RECORD-less install (pip "uninstall-no-record-file" error) is overwritten
 # instead of uninstalled — keeps re-runs idempotent.
-"$PY" -m pip install --upgrade pymupdf httpx pysbd pyahocorasick python-docx
+"$PY" -m pip install --upgrade pymupdf httpx pysbd pyahocorasick python-docx \
+    latex2mathml mathml2omml \
+    rapid_latex_ocr requests pillow
 "$PY" -m pip install --ignore-installed --no-deps --no-cache-dir "$ENGINE"
+
+# Pre-fetch the offline math-OCR models so the equation fallback works without
+# internet. Non-fatal: if it can't download now it fetches on first use.
+"$PY" -s -c "from rapid_latex_ocr import LaTeXOCR; LaTeXOCR(); print('math-OCR models cached')" \
+    || echo "   (math-OCR models will download on first use)"
 
 # pip 이 만든 콘솔 스크립트(pip·pytest·translate-engine …)를 지운다.
 #
@@ -46,5 +53,5 @@ echo "==> installing engine + deps into the bundled runtime"
 find resources/python/bin -type f ! -name 'python*' -delete
 
 echo "==> verifying"
-"$PY" -s -c "import translate_engine, pymupdf, httpx, pysbd, ahocorasick, docx; print('bundled python OK', translate_engine.__version__)"
+"$PY" -s -c "import translate_engine, pymupdf, httpx, pysbd, ahocorasick, docx, latex2mathml, mathml2omml; print('bundled python OK', translate_engine.__version__)"
 echo "done -> resources/python"

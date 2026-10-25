@@ -25,6 +25,7 @@ from docx.oxml.ns import qn
 from docx.shared import Emu, Pt
 
 from .ir import Document, TranslationResult
+from .latex_omml import latex_to_omml_element
 from .renderer import _strip_math_delims
 
 _PAGE_NUM_RE = re.compile(r"^[\-–—\s]*\d{1,4}[\-–—\s]*$")   # "- 6 -", "12"
@@ -466,6 +467,77 @@ def _emit_table(d, spec: dict, grid: list[list[str]]) -> None:
                 table.cell(r, c).text = grid[r][c]
 
 
+def _emit_formula(d, block, align_center: bool = True) -> bool:
+    """Emit a block equation as a native Word (OMML) equation.
+
+    Returns True when the block's recognised LaTeX was converted and inserted; the
+    same OMML is later turned into a native Hangul equation by the hwpx converter.
+    Returns False (caller falls back to plain text) when there is no LaTeX or the
+    conversion is not possible.
+    """
+    latex = (getattr(block, "latex", "") or "").strip()
+    if not latex:
+        return False
+    el = latex_to_omml_element(latex)
+    if el is None:
+        return False
+    p = d.add_paragraph()
+    if align_center:
+        p.alignment = 1  # center displayed equations
+    try:
+        p._p.append(el)
+    except Exception:
+        return False
+    return True
+
+
+def _split_prose_equations(text: str, eqs: list[tuple]) -> list[tuple]:
+    """Split ``text`` into ("text", str) / ("eq", latex) segments at each eq raw."""
+    raws = sorted(eqs, key=lambda e: -len(e[0]))
+    out: list[tuple] = []
+    buf = ""
+    i = 0
+    while i < len(text):
+        hit = next(((raw, lx) for raw, lx in raws if text.startswith(raw, i)), None)
+        if hit:
+            if buf:
+                out.append(("text", buf)); buf = ""
+            out.append(("eq", hit[1])); i += len(hit[0])
+        else:
+            buf += text[i]; i += 1
+    if buf:
+        out.append(("text", buf))
+    return out
+
+
+def _emit_prose(d, text: str, placeholders) -> bool:
+    """Emit a body paragraph, splicing inline OMML for math placeholders with LaTeX.
+
+    Returns False when there is nothing to splice (caller uses the plain path), so
+    ordinary paragraphs are untouched.
+    """
+    eqs = [(p.raw, p.latex) for p in (placeholders or [])
+           if p.kind == "math" and (p.latex or "").strip() and p.raw and p.raw in text]
+    if not eqs:
+        return False
+    segs = _split_prose_equations(text, eqs)
+    if not any(k == "eq" for k, _ in segs):
+        return False
+    p = d.add_paragraph()
+    for kind, val in segs:
+        if kind == "text":
+            cleaned = _clean(val)
+            if cleaned:
+                p.add_run(cleaned if val == cleaned or not val[:1].isspace() else " " + cleaned)
+        else:
+            el = latex_to_omml_element(val)
+            if el is not None:
+                p._p.append(el)
+            else:
+                p.add_run(val)
+    return True
+
+
 def _emit_figure(d, pdf_page, bbox: tuple, tmpdir: Path, idx: int, avail_pt: float) -> None:
     """Rasterize a figure region (vector or raster) and embed it, centered."""
     try:
@@ -524,6 +596,7 @@ def export_docx(doc: Document, tr: TranslationResult, out_path: Path,
     tmpdir = Path(tempfile.mkdtemp(prefix="paperko_fig_"))
     cur_ncol: int | None = None
     emitted_tu: set[str] = set()
+    fml_idx = 0                     # unique index for rasterised formula-image fallbacks
     first_page = True
     try:
         for page in sorted(doc.pages, key=lambda p: p.index):
@@ -670,6 +743,22 @@ def export_docx(doc: Document, tr: TranslationResult, out_path: Path,
                             if tu.id in emitted_tu:
                                 continue
                             emitted_tu.add(tu.id)
+                        if blk.type == "formula":
+                            if _emit_formula(d, blk):
+                                continue          # native OMML equation (→ hwpx too)
+                            if pdf_page is not None:
+                                # not recognised: keep the ORIGINAL equation as an
+                                # image rather than the garbled math-font text.
+                                fml_idx += 1
+                                with contextlib.suppress(Exception):
+                                    _emit_figure(d, pdf_page, tuple(blk.bbox), tmpdir,
+                                                 10000 + fml_idx, avail)
+                                    continue
+                        elif blk.type in ("paragraph", "list") and tu is not None:
+                            # inline equations in body prose → native inline OMML
+                            with contextlib.suppress(Exception):
+                                if _emit_prose(d, blk_text(blk), tu.placeholders):
+                                    continue
                         _emit(d, blk.type, blk_text(blk))
 
         if pdf is not None:
