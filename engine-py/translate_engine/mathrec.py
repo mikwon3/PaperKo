@@ -82,7 +82,26 @@ def clean_latex(text: str) -> str:
     # reject obvious non-answers
     if len(s) > 2000 or s.lower() in {"none", "n/a", "no equation", "i cannot", "i'm sorry"}:
         return ""
+    if _is_garbage_latex(s):
+        return ""
     return s
+
+
+def _is_garbage_latex(s: str) -> bool:
+    """Reject the runaway output a weak math-OCR emits on hard/wide crops.
+
+    pix2tex-style models, fed a wide or noisy equation, spit endless ``\\qquad``
+    padding or huge empty ``array`` tables. Better to drop that (→ keep the original
+    equation image) than to inject a nonsense equation.
+    """
+    if s.count(r"\qquad") >= 4 or s.count("~~~~") >= 1:
+        return True
+    if r"\begin{array}" in s and s.count("&") >= 10:
+        return True
+    # a long run of empty groups "{}{}{}" is the array-collapse signature
+    if "{}{}{}{}" in s.replace(" ", ""):
+        return True
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -137,13 +156,33 @@ def _get_ocr():
         return _ocr_model
     _ocr_tried = True
     try:
-        from rapid_latex_ocr import LatexOCR  # ONNX-based; downloads models on demand
+        from rapid_latex_ocr import LaTeXOCR  # ONNX-based math-OCR (pix2tex weights)
 
-        _ocr_model = LatexOCR()
+        _ocr_model = LaTeXOCR()
     except Exception as exc:  # not installed / model unavailable / offline
         log.info("local math-OCR unavailable: %s", exc)
         _ocr_model = None
     return _ocr_model
+
+
+def _trim_png(png: bytes) -> bytes:
+    """Trim whitespace borders so the OCR model sees a tight equation crop."""
+    try:
+        import io
+
+        from PIL import Image, ImageChops, ImageOps
+
+        im = Image.open(io.BytesIO(png)).convert("L")
+        inv = ImageChops.invert(im)
+        box = inv.getbbox()
+        if box:
+            im = im.crop(box)
+            im = ImageOps.expand(im, border=8, fill=255)   # small quiet margin
+        out = io.BytesIO()
+        im.convert("RGB").save(out, format="PNG")
+        return out.getvalue()
+    except Exception:
+        return png
 
 
 def ocr_latex(png: bytes) -> str | None:
@@ -151,7 +190,7 @@ def ocr_latex(png: bytes) -> str | None:
     if model is None:
         return None
     try:
-        result, _elapsed = model(png)
+        result, _elapsed = model(_trim_png(png))
         return clean_latex(result) or None
     except Exception as exc:  # noqa: BLE001
         log.info("local math-OCR failed: %s", exc)

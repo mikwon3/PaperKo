@@ -16,8 +16,12 @@ dependencies = [
 fast = ["pyahocorasick>=2.0"]
 math = ["matplotlib>=3.7"]   # inline-math rendering ($…$ → image); off by default
 # Offline equation recognition fallback (ONNX math-OCR) for when the configured
-# LLM has no vision. Pulls onnxruntime, so it is opt-in rather than bundled.
-mathocr = ["rapid_latex_ocr>=0.0.9"]
+# LLM has no vision. Bundled by default via the build scripts.
+mathocr = [
+    "rapid_latex_ocr>=0.0.9",
+    "requests>=2.25",   # undeclared runtime dep of rapid_latex_ocr
+    "pillow>=10",       # tight-crop the equation image before OCR
+]
 dev = ["pytest>=8", "ruff>=0.5"]
 
 [project.scripts]
