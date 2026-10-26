@@ -5,6 +5,15 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.10] — 2026-10-26
+
+### Fixed
+- **Translation starts immediately again.** Equation recognition (added in 1.8.8) made
+  a vision-LLM call per formula *before* translation; the backend serialises vision
+  calls, so on equation-heavy documents translation didn't visibly start for a minute+
+  and looked frozen. Recognition now runs at export (DOCX/HWPX), where the LaTeX is
+  actually used, so translation is responsive and equations still appear on export.
+
 ## [1.8.9] — 2026-10-26
 
 ### Fixed
