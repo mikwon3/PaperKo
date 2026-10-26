@@ -775,6 +775,11 @@ def _link_continuations(ordered_body: list[Block],
         prev, cur = ordered[i - 1], ordered[i]
         if prev.type not in {"paragraph", "list"} or cur.type not in {"paragraph", "list"}:
             continue
+        # A list marker ("a)", "b)", "①", "-") always begins a NEW item — it never
+        # continues the previous block. Otherwise OCR'd standards glue each marker
+        # onto the tail of the previous item and the whole list shifts.
+        if cur.type == "list":
+            continue
         # size ratio, not absolute: per-line detection is noisy (a subscript or
         # inline math pulls a line's median size down), so tolerate ~35% while a
         # real heading (much larger) still separates
@@ -785,9 +790,16 @@ def _link_continuations(ordered_body: list[Block],
         same_column = overlap > 0
         vgap = cur.bbox[1] - prev.bbox[1]
         adjacent = 0 < vgap <= pitch * 1.5              # one line down, not a paragraph break
-        indented = cur.bbox[0] > body_left + 10          # first-line indent → new paragraph
+        cur_indent = cur.bbox[0] > body_left + 10        # first-line indent -> new paragraph
+        prev_indent = prev.bbox[0] > body_left + 10
+        # Hanging-indent list continuation: lines under a list marker are indented to
+        # align past the marker, so they are continuations, not new paragraphs. But a
+        # line that RETURNS to the margin after an indented run starts a fresh block.
+        list_continuation = (prev.type == "list" or prev_indent) and cur_indent
+        returns_to_margin = prev_indent and not cur_indent
         separated = _rule_between(rules or [], prev, cur)  # a rule divides them
-        if same_style and same_column and adjacent and not indented and not separated:
+        if (same_style and same_column and adjacent and not separated
+                and not returns_to_margin and (not cur_indent or list_continuation)):
             cur.continues = prev.id
 
 
