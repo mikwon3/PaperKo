@@ -5,6 +5,16 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.9] — 2026-10-26
+
+### Fixed
+- **List-heavy documents no longer scramble.** In dense lettered/numbered lists on
+  scanned/OCR'd standards, list markers were glued onto the previous item's tail and
+  hanging-indent continuation lines were left unlinked, so markers stayed untranslated
+  and translations landed under the wrong items (re-translation couldn't fix it). The
+  layout's continuation logic now starts a new item at every list marker and links
+  indented continuations to their item. See `layout._link_continuations`.
+
 ## [1.8.8] — 2026-10-25
 
 ### Added
