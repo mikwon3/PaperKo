@@ -22,6 +22,7 @@ never break a translation run.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 
@@ -278,6 +279,7 @@ async def recognize_formulas(
     *,
     pdf_path: str | None = None,
     pages: set[int] | None = None,
+    concurrency: int = 6,
     cancel=None,
     on_progress=None,
 ) -> int:
@@ -311,40 +313,52 @@ async def recognize_formulas(
     except Exception:
         return 0
 
-    use_vlm = True           # start with the LLM; fall back to OCR on first failure
-    done = 0
-    total = len(targets)
-    try:
-        for i, blk in enumerate(targets):
-            if cancel is not None and cancel.is_set():
-                break
-            try:
-                page = pdf.load_page(blk.page)
-            except Exception:
-                continue
-            png = render_clip_png(page, blk.bbox)
-            if not png:
-                continue
+    # Pre-render the crops (cheap, synchronous) up front so the LLM/OCR calls can run
+    # CONCURRENTLY — recognising one formula at a time otherwise stalls the start of
+    # translation for a minute+ on equation-heavy documents (looks like a freeze).
+    jobs: list[tuple] = []        # (block, png)
+    for blk in targets:
+        if cancel is not None and cancel.is_set():
+            break
+        try:
+            page = pdf.load_page(blk.page)
+        except Exception:
+            continue
+        png = render_clip_png(page, blk.bbox)
+        if png:
+            jobs.append((blk, png))
 
+    total = len(jobs)
+    done = 0
+    vlm_ok = [True]              # shared: flips off once the backend proves non-vision
+    completed = [0]
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _one(blk, png) -> None:
+        nonlocal done
+        if cancel is not None and cancel.is_set():
+            return
+        async with sem:
             latex = None
-            if use_vlm:
+            if vlm_ok[0]:
                 latex = await vlm_latex(client, png)
                 if latex is None:
-                    # backend has no vision (or a hard error) — switch to OCR for
-                    # the rest of the document so we don't retry a non-VLM each time.
-                    use_vlm = False
+                    vlm_ok[0] = False      # no vision → use OCR for the rest
             if latex is None:
                 latex = await asyncio.to_thread(ocr_latex, png)
+        if latex:
+            blk.latex = latex
+            done += 1
+        completed[0] += 1
+        if on_progress is not None:
+            try:
+                on_progress(completed[0], total)
+            except Exception:
+                pass
 
-            if latex:
-                blk.latex = latex
-                done += 1
-            if on_progress is not None:
-                try:
-                    on_progress(i + 1, total)
-                except Exception:
-                    pass
+    try:
+        await asyncio.gather(*(_one(b, p) for b, p in jobs))
     finally:
-        with __import__("contextlib").suppress(Exception):
+        with contextlib.suppress(Exception):
             pdf.close()
     return done

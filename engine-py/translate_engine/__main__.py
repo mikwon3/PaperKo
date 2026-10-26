@@ -451,26 +451,10 @@ class RpcServer:
                 "error": tu.error or {"code": "postprocess", "message": "failed"},
             })
 
-        # Recognise equations → LaTeX before translating, so export can emit native
-        # Word (OMML) / Hangul (HWPX) math. No-op when there are no formulas; it
-        # downgrades on its own (vision LLM → local OCR → keep original image) and
-        # persists the LaTeX back into the IR for the export step to read.
-        try:
-            from .mathrec import recognize_formulas
-
-            pdf_for_math = params.get("pdf_path") or doc.source_path
-            n_eq = await recognize_formulas(
-                client, doc, pdf_path=pdf_for_math, pages=only_pages, cancel=cancel,
-                on_progress=lambda i, t: self.notify("progress", {
-                    "job_id": job_id, "stage": "formula", "done": i, "total": t, "page": None,
-                }),
-            )
-            if n_eq:
-                doc.save(Path(params["ir_path"]))
-                log.info("recognised %d equation(s) as LaTeX", n_eq)
-        except Exception as exc:  # recognition must never break a translation run
-            log.warning("equation recognition skipped: %s", exc)
-
+        # NOTE: equation recognition (image → LaTeX) is NOT done here — it would stall
+        # the start of translation (the LLM serialises vision calls). It runs instead
+        # at export time (_m_document_export), where the LaTeX is actually used for
+        # native Word/Hangul equations, so translation stays fast and responsive.
         try:
             tr = await translator.translate_document(
                 doc,
@@ -522,6 +506,36 @@ class RpcServer:
         fmt = (params.get("format") or "docx").lower()
         out_path = Path(params["out_path"])
         pdf_path = params.get("pdf_path")
+        job_id = params.get("job_id", "")
+
+        # Recognise equations → LaTeX here, at export, so DOCX/HWPX get native Word /
+        # Hangul math. Done at export (not during translation) so translation stays
+        # fast and responsive. Graceful: vision LLM → bundled OCR → keep the original
+        # image. Recognised LaTeX is saved into the IR, so re-exports skip it.
+        try:
+            from .mathrec import recognize_formulas
+
+            src_pdf = pdf_path or doc.source_path
+            need = any(b.type == "formula" and not (b.latex or "").strip()
+                       for b in doc.all_blocks())
+            if src_pdf and need:
+                client = _make_client(self.llm_cfg)
+                try:
+                    n_eq = await recognize_formulas(
+                        client, doc, pdf_path=src_pdf, concurrency=2,
+                        on_progress=lambda i, t: self.notify("progress", {
+                            "job_id": job_id, "stage": "formula", "done": i, "total": t,
+                            "page": None,
+                        }),
+                    )
+                finally:
+                    await client.aclose()
+                if n_eq:
+                    doc.save(Path(params["ir_path"]))
+                    log.info("recognised %d equation(s) as LaTeX for export", n_eq)
+        except Exception as exc:  # recognition must never break an export
+            log.warning("equation recognition skipped: %s", exc)
+
         result = await asyncio.to_thread(export_document, doc, tr, out_path, fmt, pdf_path)
         return {"out_path": str(result), "format": fmt}
 
