@@ -268,7 +268,12 @@ class LayoutEngine:
         ocr_used = False
         text_blocks = [b for b in raw.get("blocks", []) if b.get("type") == 0]
         density = _text_density(page)
-        if ocr != "off" and (ocr == "force" or density < _TEXT_DENSITY_MIN):
+        # Re-OCR when there is no text layer (low density) OR the text layer is present
+        # but decodes to gibberish (broken font cmap / substitution cipher) — otherwise
+        # the garbled glyphs are trusted and translation produces nonsense.
+        garbled = (ocr != "off" and density >= _TEXT_DENSITY_MIN
+                   and _text_layer_garbled(page))
+        if ocr != "off" and (ocr == "force" or density < _TEXT_DENSITY_MIN or garbled):
             ocr_blocks = self._try_ocr(page, lang=ocr_lang)
             if ocr_blocks is not None:
                 text_blocks = ocr_blocks
@@ -626,6 +631,31 @@ def _is_ocr_formula(block: Block) -> bool:
     if label and (has_eq or sym_ratio >= 0.25) and longwords <= 3:
         return True
     return False
+
+
+def _text_layer_garbled(page: "fitz.Page") -> bool:
+    """True when a dense text layer decodes to gibberish (broken font cmap).
+
+    Some PDFs — especially pages extracted/re-saved from a scanned+OCR'd original —
+    carry a text layer whose glyphs map to the wrong Unicode (a substitution cipher),
+    e.g. ``Transverse`` → ``BQ&Z_;“Q_“``. Trusting it yields untranslatable nonsense,
+    so we detect it and re-OCR. Signal: Latin-ish text whose tokens almost never
+    contain a vowel. Guarded to Latin text so a genuine CJK page is never mis-flagged.
+    """
+    try:
+        text = page.get_text()
+    except Exception:
+        return False
+    if len(text) < 200:
+        return False
+    toks = [t for t in text.split() if len(t) >= 2]
+    if len(toks) < 20:
+        return False
+    ascii_alpha = sum(1 for c in text if c.isascii() and c.isalpha())
+    if ascii_alpha / len(text) < 0.30:        # mostly non-Latin (e.g. CJK) → don't judge
+        return False
+    vowelly = sum(1 for t in toks if any(c in "aeiouAEIOU" for c in t))
+    return (vowelly / len(toks)) < 0.40
 
 
 def _is_formula(block: Block) -> bool:
