@@ -5,6 +5,17 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.11] — 2026-10-27
+
+### Fixed
+- **Pages with a corrupted text layer are re-OCR'd.** Some PDFs (especially single pages
+  extracted/re-saved by other tools) carry a broken font cmap, so the embedded text
+  comes out as a substitution cipher (`Transverse` → `BQ&Z_;"Q_"`). The engine trusted
+  it, leaving blocks untranslated or mis-classifying symbol-heavy garbage as formulas.
+  `_text_layer_garbled` now detects such pages (Latin text with almost no vowel-bearing
+  words) and discards the text layer in favour of OCR. Clean pages are untouched —
+  verified 0 false positives across a 199-page document.
+
 ## [1.8.10] — 2026-10-26
 
 ### Fixed
