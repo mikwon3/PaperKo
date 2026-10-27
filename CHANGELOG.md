@@ -5,6 +5,19 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.13] — 2026-10-27
+
+### Fixed
+- **macOS builds actually ship the current engine.** The macOS DMG build reused the
+  cached `resources/python` venv and reinstalled the engine only when it was missing, so
+  the bundle silently kept the engine version that first populated it. 1.8.11 and 1.8.12
+  DMGs therefore shipped the **1.8.10 engine** — the Go binary was bumped but none of the
+  engine fixes were present at runtime (the macOS updater does a full `.app` swap, so it
+  faithfully delivered the stale engine). The build now reinstalls `translate_engine` from
+  source on every build. Windows was unaffected (its bundle is rebuilt each build). With
+  this fix the 1.8.11/1.8.12 engine changes (garbled-page re-OCR, fragment-aware retry)
+  actually run on macOS.
+
 ## [1.8.12] — 2026-10-27
 
 ### Fixed
