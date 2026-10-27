@@ -71,6 +71,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 button.block { width: 100%; }
 .save-row { display: flex; gap: 6px; margin-top: 6px; }
 .save-row button { flex: 1; font-weight: 600; }
+.save-row.no-trans { flex-wrap: wrap; }
+.save-row.no-trans .save-label { flex-basis: 100%; font-size: 12px; opacity: 0.7; margin-top: 4px; }
 button.primary { background: var(--brand); color: #fff; }
 button.primary:hover:not(:disabled) { filter: brightness(1.06); }
 button.ghost { background: #fff; border-color: var(--line); color: var(--ink); }

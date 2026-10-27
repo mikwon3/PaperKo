@@ -266,15 +266,18 @@ func (s *JobService) GetJob(jobID string) *Job {
 	return s.B.job(jobID)
 }
 
-// ExportOutput writes the translated document to a user-chosen destination as a
-// flowing .docx or .hwpx file (generated on demand from the IR + translation).
+// ExportOutput writes the document to a user-chosen destination as a flowing .docx
+// or .hwpx file (generated on demand from the IR + translation). Translation is
+// optional: once the document has been analyzed (IRPath set) it can be exported even
+// without translating — blocks are emitted as their original text. When a translation
+// exists it is used; the engine falls back to source for any untranslated block.
 func (s *JobService) ExportOutput(jobID, dst, format string) error {
 	job := s.B.job(jobID)
 	if job == nil {
 		return &notFound{jobID}
 	}
-	if job.IRPath == "" || job.TranslationPath == "" {
-		return &notFound{jobID + " (not translated yet)"}
+	if job.IRPath == "" {
+		return &notFound{jobID + " (not analyzed yet)"}
 	}
 	ctx, cancel := bctx()
 	defer cancel()

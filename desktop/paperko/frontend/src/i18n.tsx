@@ -47,6 +47,8 @@ const EN: Record<string, string> = {
   '📝 한글(HWPX)': '📝 Hangul (HWPX)',
   '📄 Word(DOCX)': '📄 Word (DOCX)',
   '다시 번역': 'Retranslate',
+  '번역 없이 저장': 'Save without translating',
+  '문서 파일로 변환 중…': 'Converting to a document file…',
   // stages / status
   '대기': 'Idle',
   '레이아웃 분석': 'Analyzing layout',

@@ -46,6 +46,7 @@ export default function App() {
   const [stateLabel, setStateLabel] = useState('')
   const [error, setError] = useState('')
   const [outPath, setOutPath] = useState('')
+  const [exporting, setExporting] = useState(false)   // writing a .docx/.hwpx file
 
   const [page, setPage] = useState(0)
   const [srcImg, setSrcImg] = useState('')
@@ -76,6 +77,8 @@ export default function App() {
   const genJobRef = useRef('')          // whole-doc job for general-mode batches
   const pendingBatchRef = useRef<number[] | null>(null) // pages to translate after analyze
   const curBatchRef = useRef<number[]>([])              // pages of the batch in flight
+  const exportFmtRef = useRef<null | 'docx' | 'hwpx'>(null) // export (no translation) after analyze
+  const analyzedRef = useRef(false)                     // this job's IR is ready to export
   const optsRef = useRef({ style, mode, glossaryIds: selectedGlossaries })
   optsRef.current = { style, mode, glossaryIds: selectedGlossaries }
   const metaRef = useRef<Meta | null>(null); metaRef.current = meta
@@ -128,7 +131,17 @@ export default function App() {
     offs.push(Events.On('job:analyzed', (e: any) => {
       const d = e.data
       if (d.job_id !== jobIdRef.current) return
+      analyzedRef.current = true
       setFailed([])
+      // Export-without-translation: the user asked to save the (untranslated) document
+      // as Word/Hangul. Skip translation entirely and write the file from the source.
+      if (exportFmtRef.current) {
+        const fmt = exportFmtRef.current
+        exportFmtRef.current = null
+        setStage('idle')
+        pickAndExport(d.job_id, fmt)
+        return
+      }
       const pages = pendingBatchRef.current // null in paper mode → whole doc
       pendingBatchRef.current = null
       if (pages) curBatchRef.current = pages
@@ -289,6 +302,7 @@ export default function App() {
   function resetJob() {
     setJobId(''); jobIdRef.current = ''
     curBatchRef.current = []
+    analyzedRef.current = false
     setStage('idle'); setPct(0); setStateLabel(''); setError('')
     setOutPath(''); setDstImg('')
   }
@@ -376,13 +390,43 @@ export default function App() {
 
   async function save(fmt: 'pdf' | 'docx' | 'hwpx' = 'pdf') {
     if (!jobId || (fmt === 'pdf' && !outPath)) return
-    const base = (meta?.title || 'translated').replace(/[^\w가-힣.-]+/g, '_').slice(0, 60)
-    const dst = await DocumentService.PickSavePath(`${base}_KO.${fmt}`)
-    if (!dst) return
+    if (fmt === 'pdf') {
+      const base = (metaRef.current?.title || 'translated').replace(/[^\w가-힣.-]+/g, '_').slice(0, 60)
+      const dst = await DocumentService.PickSavePath(`${base}_KO.${fmt}`)
+      if (!dst) return
+      try { await JobService.SaveOutput(jobId, dst) } catch (e) { setError(String(e)) }
+      return
+    }
+    await pickAndExport(jobId, fmt, true)
+  }
+
+  // Write a job's document as a .docx/.hwpx file. `translated` only changes the
+  // suggested filename suffix (_KO) — the engine emits a translation when the job has
+  // one and falls back to the original text per block otherwise, so this also serves
+  // the "export without translating" path.
+  async function pickAndExport(id: string, fmt: 'docx' | 'hwpx', translated = false) {
+    const base = (metaRef.current?.title || 'document').replace(/[^\w가-힣.-]+/g, '_').slice(0, 60)
+    const dst = await DocumentService.PickSavePath(`${base}${translated ? '_KO' : ''}.${fmt}`)
+    if (!dst) { setExporting(false); return }
+    setExporting(true); setError('')
+    try { await JobService.ExportOutput(id, dst, fmt) }
+    catch (e) { setError(String(e)) }
+    finally { setExporting(false) }
+  }
+
+  // Save the current PDF as Word/Hangul WITHOUT translating. Analyze first if needed
+  // (the job:analyzed handler then exports), otherwise export the already-analyzed job.
+  async function exportSourceOnly(fmt: 'docx' | 'hwpx') {
+    if (!pdfPath || busy || exporting) return
+    if (jobId && analyzedRef.current) { await pickAndExport(jobId, fmt, false); return }
+    exportFmtRef.current = fmt
+    resetJob(); setStage('analyze'); setExporting(true)
     try {
-      if (fmt === 'pdf') await JobService.SaveOutput(jobId, dst)
-      else await JobService.ExportOutput(jobId, dst, fmt)
-    } catch (e) { setError(String(e)) }
+      const id = await DocumentService.AnalyzeDocument(pdfPath, '', '')
+      setJobId(id); jobIdRef.current = id
+    } catch (e) {
+      setStage('failed'); setError(String(e)); setExporting(false); exportFmtRef.current = null
+    }
   }
 
   const busy = stage === 'analyze' || stage === 'translate' || stage === 'render'
@@ -599,6 +643,18 @@ export default function App() {
           {docType === 'paper' && !busy && stage !== 'done' && (
             <button className="primary block" onClick={startTranslation} disabled={!meta}>{t('▶ 번역 시작')}</button>
           )}
+          {/* Save the PDF as an editable Word/Hangul file WITHOUT translating it —
+              the layout engine turns the original text into a flowing document. */}
+          {meta && !busy && stage !== 'done' && (
+            <div className="save-row no-trans">
+              <span className="save-label">{t('번역 없이 저장')}</span>
+              <button className="ghost" disabled={exporting}
+                onClick={() => exportSourceOnly('hwpx')}>{t('📝 한글(HWPX)')}</button>
+              <button className="ghost" disabled={exporting}
+                onClick={() => exportSourceOnly('docx')}>{t('📄 Word(DOCX)')}</button>
+            </div>
+          )}
+          {exporting && <div className="state-label">{t('문서 파일로 변환 중…')}</div>}
           {/* Continue the whole document from where it stopped — available in both
               modes (a document-level action). In general mode it finishes every
               remaining page at once, complementing the batch card's range control. */}

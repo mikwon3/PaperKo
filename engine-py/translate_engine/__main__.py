@@ -498,41 +498,79 @@ class RpcServer:
         )
         return {"out_path": str(out_path), "report": report.to_dict()}
 
+    # Equation recognition at export is best-effort. It must never make an export
+    # hang: a doc with many "formula" blocks (often OCR false-positives) would fire
+    # one slow vision call each, and a slow/unavailable vision backend makes each
+    # wait out the client timeout — minutes to hours. So we cap how many we attempt
+    # and bound the whole step with a wall-clock budget; whatever isn't recognised
+    # simply keeps its preserved equation image.
+    _RECOG_MAX_FORMULAS = 40        # more than this ⇒ likely over-detection; skip
+    _RECOG_BUDGET_S = 25.0          # hard ceiling for the whole recognition step
+
     async def _m_document_export(self, params: dict) -> dict:
-        """Export the translated document as a flowing .docx or .hwpx file."""
+        """Export the document as a flowing .docx or .hwpx file.
+
+        Works with or without a translation: when no translation is available the
+        blocks are emitted as their original (source) text, so the PDF can be turned
+        into an editable Word/Hangul file without translating first."""
         from .docx_export import export_document
         doc = Document.load(Path(params["ir_path"]))
-        tr = TranslationResult.load(Path(params["translation_path"]))
+        # translation_path is optional — without it (or if the file is gone) we export
+        # the source text. export_docx already falls back to each block's source when a
+        # TU is missing or unfinished, so an empty result yields a clean source export.
+        tpath = params.get("translation_path")
+        tr = (TranslationResult.load(Path(tpath))
+              if tpath and Path(tpath).exists()
+              else TranslationResult(doc_id=doc.doc_id, translation_units=[]))
         fmt = (params.get("format") or "docx").lower()
         out_path = Path(params["out_path"])
         pdf_path = params.get("pdf_path")
         job_id = params.get("job_id", "")
 
         # Recognise equations → LaTeX here, at export, so DOCX/HWPX get native Word /
-        # Hangul math. Done at export (not during translation) so translation stays
-        # fast and responsive. Graceful: vision LLM → bundled OCR → keep the original
-        # image. Recognised LaTeX is saved into the IR, so re-exports skip it.
+        # Hangul math. Graceful: vision LLM → bundled OCR → keep the original image.
+        # Recognised LaTeX is saved into the IR, so re-exports skip it. Time-boxed and
+        # count-gated (see above) so a slow vision backend can never stall the save.
+        #
+        # Only when a translation exists: an untranslated source export has no reason to
+        # spend vision calls turning equations into native math — it just keeps them as
+        # their preserved images, so the export stays instant regardless of equation count.
         try:
             from .mathrec import recognize_formulas
 
             src_pdf = pdf_path or doc.source_path
-            need = any(b.type == "formula" and not (b.latex or "").strip()
-                       for b in doc.all_blocks())
-            if src_pdf and need:
+            need = [b for b in doc.all_blocks()
+                    if b.type == "formula" and not (b.latex or "").strip()]
+            if (tr.translation_units and src_pdf and need
+                    and len(need) <= self._RECOG_MAX_FORMULAS):
                 client = _make_client(self.llm_cfg)
                 try:
-                    n_eq = await recognize_formulas(
-                        client, doc, pdf_path=src_pdf, concurrency=2,
-                        on_progress=lambda i, t: self.notify("progress", {
-                            "job_id": job_id, "stage": "formula", "done": i, "total": t,
-                            "page": None,
-                        }),
+                    n_eq = await asyncio.wait_for(
+                        recognize_formulas(
+                            client, doc, pdf_path=src_pdf, concurrency=2,
+                            on_progress=lambda i, t: self.notify("progress", {
+                                "job_id": job_id, "stage": "formula", "done": i,
+                                "total": t, "page": None,
+                            }),
+                        ),
+                        timeout=self._RECOG_BUDGET_S,
                     )
+                except asyncio.TimeoutError:
+                    n_eq = 0
+                    log.warning("equation recognition hit %.0fs budget; exporting with "
+                                "preserved images", self._RECOG_BUDGET_S)
                 finally:
                     await client.aclose()
                 if n_eq:
                     doc.save(Path(params["ir_path"]))
                     log.info("recognised %d equation(s) as LaTeX for export", n_eq)
+            elif need and not tr.translation_units:
+                log.info("source export: keeping %d equation(s) as images (no translation)",
+                         len(need))
+            elif need:
+                log.info("skipping equation recognition (%d formula blocks > %d cap); "
+                         "exporting with preserved images", len(need),
+                         self._RECOG_MAX_FORMULAS)
         except Exception as exc:  # recognition must never break an export
             log.warning("equation recognition skipped: %s", exc)
 
