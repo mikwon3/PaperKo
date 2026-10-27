@@ -5,6 +5,24 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.14] — 2026-10-28
+
+### Fixed
+- **Word/Hangul export never hangs.** `document.export` recognised every formula block
+  via a vision-LLM call before writing the file; on an OCR'd standard with ~189 formula
+  blocks (mostly false positives) each slow/failed vision call waited out the client
+  timeout, so the save looked frozen for minutes. Recognition is now count-gated (skipped
+  when >40 formula blocks) and wall-clock bounded (25s); unrecognised equations keep their
+  preserved image and the export always completes.
+
+### Added
+- **Export without translating.** An analyzed PDF can be saved as .docx/.hwpx without
+  translating — blocks are emitted as their original text (export already falls back to
+  source per block). On a source export equation recognition is skipped entirely and
+  equations are kept as images, so it is instant regardless of equation count. New
+  "Save without translating" buttons; `JobService.ExportOutput` now requires only an
+  analyzed IR, not a translation; an export-in-progress indicator is shown.
+
 ## [1.8.13] — 2026-10-27
 
 ### Fixed
