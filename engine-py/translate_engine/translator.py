@@ -345,6 +345,51 @@ class Translator:
         norm = lambda s: re.sub(r"[\d.\s]+", " ", s).strip().lower()
         return norm(out) == norm(src)
 
+    async def _retry_prose_echo(self, tu: TU) -> bool:
+        """Last-chance retry for a *prose* block the model left untranslated — it
+        echoed the source back or returned nothing.  This mostly hits short sentence
+        fragments and list continuations ("c) longitudinal …", "members, and …;")
+        which, handed to the model in isolation, are read as already-fine and echoed,
+        or (on a reasoning model under a tight token budget) burn the whole budget on
+        hidden reasoning and come back empty.  A forceful "this is a fragment, you
+        MUST translate it" instruction plus a generous budget recovers them.
+
+        Returns True when it produced a genuine target-language translation."""
+        src = _plain_source(tu).strip()
+        if not src:
+            return False
+        if _is_korean_target(self.opts.target_lang):
+            system = (
+                "당신은 학술 논문 번역가입니다. 아래 텍스트는 더 긴 문장에서 잘라낸 '조각'"
+                "(목록 항목이나 이어지는 절)일 수 있습니다. 불완전해 보여도 반드시 한국어로 "
+                "번역하세요. 영어를 그대로 두지 말고, 목록 기호(a), b), c))와 숫자·기호는 "
+                "유지한 채 나머지는 모두 한국어로 옮기고, 번역문만 출력하세요."
+            )
+        else:
+            tgt = _lang_en(self.opts.target_lang)
+            system = (
+                f"You are an academic translator. The text below may be a FRAGMENT cut "
+                f"from a longer sentence (a list item or a continuing clause). Even if it "
+                f"looks incomplete, you MUST translate it into {tgt}. Do not leave it in "
+                f"the source language; keep list markers (a), b), c)) and numbers/symbols "
+                f"as-is and translate the rest. Output only the translation."
+            )
+        try:
+            res = await self.client.chat(
+                [{"role": "system", "content": system}, {"role": "user", "content": src}],
+                max_tokens=_estimate_out_tokens(src),
+            )
+        except Exception:  # noqa: BLE001 - keep whatever we had on any error
+            return False
+        out, _kind, _w = self._postprocess(res.text, tu)
+        if out and self._in_target_script(out) and not self._is_echo_text(out, src):
+            tu.target_text = out
+            tu.status = "done"
+            tu.error = None
+            tu.warnings = tu.warnings + ["recovered by fragment retry"]
+            return True
+        return False
+
     def _user_prompt(
         self, tu: TU, doc_title: str, abstract_summary: str, prev_tu: TU | None
     ) -> str:
@@ -569,9 +614,17 @@ class Translator:
                     if (tu.status == "done" and heading_ids.intersection(tu.block_ids)
                             and self._is_echo(tu)):
                         await self._retry_heading_echo(tu)
+                # a prose block the model echoed back untranslated (or returned empty
+                # for) — common for short sentence fragments / list continuations, and
+                # for reasoning models whose hidden budget swallowed the answer. Give it
+                # one forceful fragment-aware retry before surfacing it as a failure.
+                for tu in ptus:
+                    self._verify_translated(tu)  # flag substantial untranslated blocks
+                    if (tu.status == "failed"
+                            and (tu.error or {}).get("code") == "untranslated"):
+                        await self._retry_prose_echo(tu)
                 async with lock:
                     for tu in ptus:
-                        self._verify_translated(tu)  # flag substantial untranslated blocks
                         done_count += 1
                         if tu.status == "failed" and on_tu_failed:
                             on_tu_failed(tu)
