@@ -5,6 +5,20 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.12] — 2026-10-27
+
+### Fixed
+- **Short fragments no longer stay untranslated.** Short sentence fragments and list
+  continuations ("c) longitudinal and transverse …", "members, and …;"), handed to the
+  model in isolation, were often echoed back untranslated or — on a reasoning model whose
+  hidden reasoning consumed a tight token budget — came back empty, so the block surfaced
+  as an "untranslated" failure and stayed English even across re-runs. Headings already
+  had a dedicated echo retry; prose did not. `_retry_prose_echo` now gives such a block
+  one forceful, fragment-aware retry with a generous token budget before giving up.
+  Verified on an OCR'd 199-page standard: pages that previously left readable English now
+  translate; only a genuinely scrambled rotated-table page (unreadable OCR gibberish)
+  remains, as it must.
+
 ## [1.8.11] — 2026-10-27
 
 ### Fixed
