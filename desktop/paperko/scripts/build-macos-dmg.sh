@@ -41,6 +41,13 @@ if [ ! -x resources/python/bin/python3 ]; then
   echo "    resources/python missing — run scripts/fetch-python-macos.sh first" >&2
   exit 1
 fi
+# Re-sync translate_engine from source on EVERY build. The runtime (interpreter +
+# third-party deps) is cached in resources/python and reused, but the engine itself
+# changes constantly — if we don't reinstall it here the bundle silently keeps whatever
+# engine version was first installed (this shipped the 1.8.10 engine inside 1.8.11/1.8.12).
+echo "    re-syncing translate_engine from ../../engine-py"
+resources/python/bin/python3 -m pip install --quiet --force-reinstall --no-deps --no-cache-dir ../../engine-py
+resources/python/bin/python3 -s -c "import translate_engine; print('    bundled engine →', translate_engine.__version__)"
 
 echo "==> 3/6  building + packaging .app (wails3)"
 wails3 task package                                   # -> bin/paperko.app
