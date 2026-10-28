@@ -331,6 +331,29 @@ class Renderer:
             elif tu.status == "failed":
                 failed_blocks.append(blk)
 
+        # Guard against overlapping translations: a scanned/OCR'd page sometimes
+        # yields a small block sitting *inside* a larger block of a different TU —
+        # a double-captured paragraph (the same text grabbed twice) or a heading
+        # sandwiched between two paragraph blocks that one TU then spans. Flowing
+        # both would stack two Korean paragraphs in the same space (the "여러 줄이
+        # 겹쳐보임" overlap). Keep the larger region; mark the smaller contained one
+        # so its source is still redacted but its translation is not drawn again.
+        ordered = sorted(
+            groups.values(),
+            key=lambda g: _rect_area(_union_bbox([b.bbox for b in g["blocks"]])),
+            reverse=True,
+        )
+        kept_rects: list[list[float]] = []
+        for g in ordered:
+            u = _union_bbox([b.bbox for b in g["blocks"]])
+            area = _rect_area(u) or 1.0
+            contained = any(_intersect_area(u, k) / area >= 0.55 for k in kept_rects)
+            g["draw"] = not contained
+            if contained:
+                log.debug("suppressing overlapping TU %s (inside a larger region)", g["tu"].id)
+            else:
+                kept_rects.append(u)
+
         # 1. redact the original text of every constituent block.
         #    On a scanned page (OCR text layer over a full-page image, e.g. an
         #    OCR'd standard) a normal redaction leaves the scan untouched, and OCR
@@ -351,7 +374,10 @@ class Renderer:
             )
 
         # 2. flow each TU's translation once into the union region of its blocks
+        #    (skipping groups suppressed above as overlapping duplicates)
         for g in groups.values():
+            if not g.get("draw", True):
+                continue
             blocks = g["blocks"]
             union = _union_bbox([b.bbox for b in blocks])
             exclude = {b.id for b in blocks}
@@ -605,6 +631,16 @@ def _union_bbox(bboxes: list[list[float]]) -> list[float]:
         min(b[0] for b in bboxes), min(b[1] for b in bboxes),
         max(b[2] for b in bboxes), max(b[3] for b in bboxes),
     ]
+
+
+def _rect_area(b: list[float]) -> float:
+    return max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+
+
+def _intersect_area(a: list[float], b: list[float]) -> float:
+    ix = min(a[2], b[2]) - max(a[0], b[0])
+    iy = min(a[3], b[3]) - max(a[1], b[1])
+    return max(0.0, ix) * max(0.0, iy)
 
 
 def _has_hangul(text: str) -> bool:

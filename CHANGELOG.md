@@ -5,6 +5,20 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.15] — 2026-10-28
+
+### Fixed
+- **Overlapping translated lines on OCR'd pages.** The layout-preserving re-render flowed
+  one Korean translation per TU into the union of its blocks, but an OCR'd page sometimes
+  yields a small block sitting *inside* a larger block of a different TU — the same paragraph
+  captured twice, or a heading sandwiched between two paragraph blocks that one TU then spans.
+  Two translations then stacked in the same space and the glyphs tangled ("여러 줄이 겹쳐보임").
+  The renderer now detects a TU region that is ≥55% contained within a larger TU region, keeps
+  the larger one, and does not re-draw the contained one (its source is still redacted). Across
+  a 218-page handbook this suppressed 11 duplicated/sandwiched regions on 8 pages and left every
+  normal and two-column block untouched. Added `_rect_area` / `_intersect_area` helpers and unit
+  tests for the containment geometry.
+
 ## [1.8.14] — 2026-10-28
 
 ### Fixed
