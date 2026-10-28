@@ -123,6 +123,21 @@ def _inline_math_html(text: str, font_px: float, color: str) -> str:
     out.append(html_lib.escape(text[pos:]))
     return "".join(out)
 
+# A genuine heading opens with a section number (1., 2.3, 3.1.1), a list/figure/table
+# label, or a short standalone word — used to tell real headings from body lines that
+# layout mislabeled as headings (which are long prose and don't start this way).
+_HEADING_LABEL_RE = re.compile(
+    r"^\s*("
+    r"\d+(\.\d+)*\.?(\s|$)"          # 1   2.3   3.1.1.
+    r"|\d+\)"                         # 1)
+    r"|[•·▪◦\-–—]\s"                  # bullet
+    r"|제?\s*\d+\s*(장|절|항)"          # 제2장, 3절
+    r"|(표|그림|부록)\s*\d"             # 표 1, 그림 2, 부록 A
+    r"|(Table|Fig\.?|Figure|Appendix|Section|Chapter|Eq\.?)\s*\d"
+    r")",
+    re.IGNORECASE,
+)
+
 log = logging.getLogger("translate_engine.renderer")
 
 # Candidate Korean fonts per family, in preference order. Relative names resolve
@@ -491,14 +506,57 @@ class Renderer:
         return fitz.Rect(rect.x0, rect.y0 - 1.5, right, rect.y1 + 1.5)
 
     # ------------------------------------------------------------------ #
-    def _norm_size(self, blk: Block) -> float:
+    def _looks_like_prose_heading(self, blk: Block, text: str | None = None) -> bool:
+        """True when a block tagged *heading* carries running body prose (a line that
+        layout split off and mislabeled), so it should render at body size, not with
+        the heading bump.  A genuine heading is short or starts with a section number
+        / label; mislabeled body lines are long prose or trail off mid-sentence."""
+        if blk.type != "heading":
+            return False
+        s = (text or "").strip()
+        if not s:
+            return False
+        if s.endswith((",", "，", "…", ";", "·", "、")):  # trails mid-sentence
+            return True
+        # a Korean verb predicate (…한다. …이다. …않는다) is a sentence, never a heading
+        # (headings are noun phrases); "다" is the reliable signal — nominal endings
+        # like 음·함 are skipped, since many nouns end that way (이음, 그림, 모음).
+        if s.rstrip(".").endswith("다") and not _HEADING_LABEL_RE.match(s):
+            return True
+        # long and not opening with a section number / list / figure-table label
+        return len(s) > 34 and not _HEADING_LABEL_RE.match(s)
+
+    def _looks_like_paragraph(self, blk: Block, text: str | None = None) -> bool:
+        """True when a block tagged heading/title/caption is really body text that
+        layout analysis mislabeled — a genuine heading is short (a line or two) and
+        set in a larger face.  We judge by the SOURCE geometry (independent of how
+        long the translation turns out), with the translated length as a backstop."""
+        fs = blk.style_summary.font_size or getattr(self, "_body_size", 10.0) or 10.0
+        _x0, y0, _x1, y1 = blk.bbox
+        lines_tall = max(0.0, y1 - y0) / max(1.0, fs * 1.25)
+        if lines_tall > 3.0:            # taller than ~3 lines → a paragraph, not a heading
+            return True
+        if text and len(text.strip()) > 120:  # long run of prose → not a heading
+            return True
+        return False
+
+    def _norm_size(self, blk: Block, text: str | None = None) -> float:
         """Font size normalized by role, so all body text is uniform and headings
-        differ by a fixed step rather than by noisy per-block detected sizes."""
+        differ by a fixed step rather than by noisy per-block detected sizes.
+
+        Guards against the common layout-analysis error of tagging a multi-line body
+        paragraph as a heading/title: it would otherwise render 12–70% larger than
+        the surrounding text and make the page font look uneven. The guard keys on
+        block SHAPE (a genuine heading is only a line or two), not on the detected
+        font size — which is unreliable on OCR'd pages where every block measures
+        near the body size, so a size-ratio test would wrongly demote real headings."""
         body = getattr(self, "_body_size", 0.0) or blk.style_summary.font_size or 10.0
         t = blk.type
-        if t == "title":
-            return round(body * 1.7, 1)
-        if t == "heading":
+        if t in ("title", "heading"):
+            if self._looks_like_paragraph(blk, text) or self._looks_like_prose_heading(blk, text):
+                return round(body, 1)  # mislabeled paragraph/body line → uniform body size
+            if t == "title":
+                return round(body * 1.7, 1)
             ratio = (blk.style_summary.font_size / body) if body else 1.0
             return round(body * (1.3 if ratio >= 1.3 else 1.12), 1)
         if t == "caption":
@@ -507,8 +565,9 @@ class Renderer:
 
     def _html(self, text: str, blk: Block, line_height: float) -> str:
         st = blk.style_summary
+        font_px = self._norm_size(blk, text)
         if self.opts.render_inline_math:
-            esc = _inline_math_html(text, self._norm_size(blk), st.color or "#000000")
+            esc = _inline_math_html(text, font_px, st.color or "#000000")
         else:
             esc = html_lib.escape(_strip_math_delims(text))
         if st.bold:
@@ -523,7 +582,7 @@ class Renderer:
         if align == "center" and blk.type in {"paragraph", "list", "reference", "footnote"}:
             align = "left"
         style = (
-            f"font-size:{self._norm_size(blk):.1f}px;"
+            f"font-size:{font_px:.1f}px;"
             f"line-height:{line_height:.2f};"
             f"text-align:{align};"
             f"color:{st.color};"

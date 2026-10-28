@@ -5,6 +5,21 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.16] — 2026-10-28
+
+### Fixed
+- **Uneven body font on re-rendered pages.** `_norm_size` enlarges headings/titles by a
+  fixed step over the uniform body size, but layout analysis often tags a body line as a
+  "heading" — especially on line-numbered journal pre-proofs, where every physical line is
+  its own block. Those lines then rendered 12–30% larger than the surrounding paragraph and
+  made the page font look uneven. The renderer now demotes a heading/title block back to body
+  size when it is really prose: multi-line (taller than ~3 lines), long running text, or —
+  for Korean targets — a line that trails off on a comma or ends in a verb predicate (…다),
+  while still enlarging genuine headings (short labels, section numbers like `2.1`/`3.1.1`,
+  `표/그림/Table/Fig` captions). Judged on block shape and text, not on the detected source
+  font size, which is unreliable on OCR'd pages. Adds `_looks_like_prose_heading` /
+  `_looks_like_paragraph` and unit tests.
+
 ## [1.8.15] — 2026-10-28
 
 ### Fixed
