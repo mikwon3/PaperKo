@@ -524,16 +524,34 @@ def _strip_line_numbers(blocks: list[Block], page_width: float) -> None:
 # --------------------------------------------------------------------------- #
 def _detect_columns(blocks: list[Block], page_width: float) -> list[Column]:
     """Detect column bands from the horizontal distribution of block centers."""
-    body = [b for b in blocks if (b.bbox[2] - b.bbox[0]) < page_width * 0.7]
+    mid = page_width / 2
+    gut = page_width * 0.05  # half-gutter tolerance around the midline
+
+    def _straddles(b: Block) -> bool:
+        # crosses the midline → a full-width / table / spanning element, not a
+        # single-column body block
+        return b.bbox[0] < mid - gut and b.bbox[2] > mid + gut
+
+    # Body sample for the gutter vote: single-column-sized blocks that sit cleanly
+    # on one side of the page. Full-width blocks, gutter-crossing blocks (table
+    # rows, spanning notes, wide figure captions) and tiny marks (page numbers)
+    # are NOT column bodies — left in, a handful of them centers near the midline
+    # and wrongly flips a clear two-column page to one column (e.g. a results page
+    # with a wide stats table or a full-width Taylor-diagram caption).
+    body = [
+        b for b in blocks
+        if (b.bbox[2] - b.bbox[0]) < page_width * 0.7
+        and not _straddles(b)
+        and (b.bbox[2] - b.bbox[0]) > page_width * 0.04
+    ]
     if len(body) < 4:
         return [Column(x0=0.0, x1=round(page_width, 2))]
 
     centers = sorted((b.bbox[0] + b.bbox[2]) / 2 for b in body)
     # Two-column test: is there a clear vertical gutter near the middle?
-    mid = page_width / 2
     near_mid = [c for c in centers if abs(c - mid) < page_width * 0.12]
-    left = [c for c in centers if c < mid - page_width * 0.05]
-    right = [c for c in centers if c > mid + page_width * 0.05]
+    left = [c for c in centers if c < mid - gut]
+    right = [c for c in centers if c > mid + gut]
     if len(near_mid) <= len(centers) * 0.15 and left and right and \
             len(left) > len(centers) * 0.2 and len(right) > len(centers) * 0.2:
         return [
@@ -828,8 +846,18 @@ def _link_continuations(ordered_body: list[Block],
         list_continuation = (prev.type == "list" or prev_indent) and cur_indent
         returns_to_margin = prev_indent and not cur_indent
         separated = _rule_between(rules or [], prev, cur)  # a rule divides them
-        if (same_style and same_column and adjacent and not separated
-                and not returns_to_margin and (not cur_indent or list_continuation)):
+        clean_adjacent = (adjacent and not returns_to_margin
+                          and (not cur_indent or list_continuation))
+        # Math-heavy lines fragment: a paragraph carrying inline fractions / sub-
+        # or superscripts (f'_c, l_d/d_b, s∕b) is split by the PDF text layer into
+        # two blocks whose line boxes OVERLAP vertically instead of stacking at the
+        # clean line pitch, so the top-to-top adjacency test above never rejoins
+        # them. Flowed as two TUs they stack two Korean paragraphs in the same band
+        # (the "중첩/겹침" overprint). Rejoin when the current block begins *inside*
+        # the previous block's vertical span in the same column.
+        vertical_overlap = prev.bbox[1] <= cur.bbox[1] < prev.bbox[3] - 2
+        if (same_style and same_column and not separated
+                and (clean_adjacent or vertical_overlap)):
             cur.continues = prev.id
 
 

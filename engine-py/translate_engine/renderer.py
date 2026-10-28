@@ -389,12 +389,20 @@ class Renderer:
             )
 
         # 2. flow each TU's translation once into the union region of its blocks
-        #    (skipping groups suppressed above as overlapping duplicates)
-        for g in groups.values():
-            if not g.get("draw", True):
-                continue
+        #    (skipping groups suppressed above as overlapping duplicates).
+        #    First tile any residual vertical overlap between regions sharing a
+        #    column: PDF line boxes are leading-inflated, so a region's bottom
+        #    overlaps the next region's top by a few px (a heading into its body,
+        #    or two consecutive paragraphs). Split each overlap band at its midpoint
+        #    so two Korean lines never print into the same strip.
+        drawn = [g for g in groups.values() if g.get("draw", True)]
+        for g in drawn:
+            g["rect"] = list(_union_bbox([b.bbox for b in g["blocks"]]))
+        _tile_column_overlaps([g["rect"] for g in drawn])
+
+        for g in drawn:
             blocks = g["blocks"]
-            union = _union_bbox([b.bbox for b in blocks])
+            union = g["rect"]
             exclude = {b.id for b in blocks}
             outcome = self._fit_region(page, fitz.Rect(union), blocks[0], g["tu"].target_text,
                                        ir_page, exclude, rules)
@@ -466,7 +474,12 @@ class Renderer:
             if other.id in exclude_ids:
                 continue
             ox0, oy0, ox1, _oy1 = other.bbox
-            if min(rect.x1, ox1) - max(rect.x0, ox0) > 0 and oy0 >= rect.y1 - 1:
+            # Any block that begins below this region's TOP in the same horizontal
+            # band is an obstacle — not only ones strictly below its bottom. A
+            # neighbour whose (slightly inflated) box overlaps this region's bottom
+            # edge would otherwise be missed, letting the text expand straight
+            # through it and overprint it (the "중첩/겹침" stack).
+            if min(rect.x1, ox1) - max(rect.x0, ox0) > 0 and oy0 >= rect.y0 + 2:
                 limit = min(limit, oy0 - 2)
         for ry, rx0, rx1 in (rules or []):
             if ry >= rect.y1 - 1 and min(rect.x1, rx1) - max(rect.x0, rx0) > 0:
@@ -700,6 +713,29 @@ def _intersect_area(a: list[float], b: list[float]) -> float:
     ix = min(a[2], b[2]) - max(a[0], b[0])
     iy = min(a[3], b[3]) - max(a[1], b[1])
     return max(0.0, ix) * max(0.0, iy)
+
+
+def _tile_column_overlaps(rects: list[list[float]]) -> None:
+    """Remove residual vertical overlap between regions that share a column, in
+    place. PDF line boxes are leading-inflated, so a region's bottom overlaps the
+    next region's top by a few px (a heading into its body, or two consecutive
+    paragraphs); flowed as-is, two Korean lines print into the same strip. For each
+    overlapping pair in the same column (x-overlap ≥ half the narrower width), split
+    the overlap band at its midpoint. Fully-contained pairs are left untouched (a
+    sandwiched duplicate is suppressed elsewhere, not tiled)."""
+    for i in range(len(rects)):
+        for j in range(i + 1, len(rects)):
+            a, b = rects[i], rects[j]
+            xov = min(a[2], b[2]) - max(a[0], b[0])
+            narrow = min(a[2] - a[0], b[2] - b[0])
+            if narrow <= 0 or xov < narrow * 0.5:          # different columns
+                continue
+            yov = min(a[3], b[3]) - max(a[1], b[1])
+            if yov <= 0 or yov >= min(a[3] - a[1], b[3] - b[1]):
+                continue  # no overlap, or full containment
+            up, lo = (a, b) if a[1] <= b[1] else (b, a)
+            mid = (up[3] + lo[1]) / 2
+            up[3], lo[1] = min(up[3], mid), max(lo[1], mid)
 
 
 def _has_hangul(text: str) -> bool:

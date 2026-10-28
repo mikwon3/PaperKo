@@ -19,6 +19,26 @@ under the **same** version number; the JSON-RPC `protocol_version` and IR
   `표/그림/Table/Fig` captions). Judged on block shape and text, not on the detected source
   font size, which is unreliable on OCR'd pages. Adds `_looks_like_prose_heading` /
   `_looks_like_paragraph` and unit tests.
+- **Overlapping translated lines on two-column born-digital papers.** On a two-column
+  journal PDF (Elsevier-style, line-numbered) the re-render still stacked Korean lines in a
+  few places. Three root causes in the layout/render path, all fixed:
+  (1) *Column detection flipped two columns to one* when a page carried a few full-width
+  table rows, spanning notes, or a wide figure caption — their centres sit near the gutter
+  and outvoted the two-column test, scrambling reading order. `_detect_columns` now excludes
+  gutter-crossing blocks and tiny page numbers from the vote.
+  (2) *Math-fragmented paragraphs never rejoined.* A paragraph with inline fractions / sub-
+  or superscripts (`f'_c`, `l_d/d_b`, `s∕b`) is split by the PDF text layer into blocks whose
+  line boxes **overlap** in y instead of stacking; `_link_continuations` (built for cleanly
+  separated lines) left them as two TUs that overprinted. It now also rejoins a block that
+  begins *inside* the previous block's vertical span in the same column.
+  (3) *A region expanded straight through its neighbour.* `_expand_rect` treated only blocks
+  strictly below as obstacles, so a neighbour whose (leading-inflated) box overlapped the
+  region's bottom edge was missed and the text grew through it. It now stops at any
+  same-column block starting below the region's top.
+  Finally the renderer tiles any residual few-px overlap between same-column regions at the
+  midpoint (`_tile_column_overlaps`), so a heading and its body — or two consecutive
+  paragraphs — never share a strip. Verified overprint-free across the 19-page paper; adds
+  column-detection, continuation and tiling unit tests.
 
 ## [1.8.15] — 2026-10-28
 
