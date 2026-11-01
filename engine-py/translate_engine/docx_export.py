@@ -24,6 +24,7 @@ from docx.enum.section import WD_SECTION
 from docx.oxml.ns import qn
 from docx.shared import Emu, Pt
 
+from .geometry import overlap_frac
 from .ir import Document, TranslationResult
 from .latex_omml import latex_to_omml_element
 from .renderer import _strip_math_delims
@@ -311,19 +312,6 @@ def _merge_boxes(boxes: list[tuple], gap: float = 18.0) -> list[list[float]]:
     return merged
 
 
-def _overlap_frac(box, others: list) -> float:
-    """Fraction of `box` area covered by any of `others` (rough, sum of overlaps)."""
-    bx = (box[2] - box[0]) * (box[3] - box[1])
-    if bx <= 0:
-        return 0.0
-    cov = 0.0
-    for o in others:
-        ix = max(0.0, min(box[2], o[2]) - max(box[0], o[0]))
-        iy = max(0.0, min(box[3], o[3]) - max(box[1], o[1]))
-        cov += ix * iy
-    return min(cov / bx, 1.0)
-
-
 def _region_has_ink(page, region: tuple, thresh: float = 0.010) -> bool:
     """True if a page region holds real content (a figure), not just whitespace —
     used to keep figures that are baked into a scanned page image."""
@@ -396,9 +384,9 @@ def _figure_regions(page, text_boxes: list, table_boxes: list) -> list[tuple]:
         w, h = c[2] - c[0], c[3] - c[1]
         if w < 45 or h < 45 or w * h < 0.02 * area:
             continue
-        if _overlap_frac(c, text_boxes) > 0.55:     # a text area, not a figure
+        if overlap_frac(c, text_boxes) > 0.55:     # a text area, not a figure
             continue
-        if _overlap_frac(c, table_boxes) > 0.5:      # a table, handled elsewhere
+        if overlap_frac(c, table_boxes) > 0.5:      # a table, handled elsewhere
             continue
         figs.append(tuple(c))
     return figs

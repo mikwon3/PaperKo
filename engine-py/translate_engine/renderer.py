@@ -20,6 +20,7 @@ from pathlib import Path
 import pymupdf as fitz  # PyMuPDF (modern import; avoids the legacy `fitz` deprecation warning)
 
 from .errors import EngineError, RESOURCE_MISSING
+from .geometry import intersect_area, rect_area, union_bbox
 from .ir import Block, Document, TranslationResult
 
 # Inline math the LLM emitted as LaTeX: $ … $  or  \( … \)
@@ -355,14 +356,14 @@ class Renderer:
         # so its source is still redacted but its translation is not drawn again.
         ordered = sorted(
             groups.values(),
-            key=lambda g: _rect_area(_union_bbox([b.bbox for b in g["blocks"]])),
+            key=lambda g: rect_area(union_bbox([b.bbox for b in g["blocks"]])),
             reverse=True,
         )
         kept_rects: list[list[float]] = []
         for g in ordered:
-            u = _union_bbox([b.bbox for b in g["blocks"]])
-            area = _rect_area(u) or 1.0
-            contained = any(_intersect_area(u, k) / area >= 0.55 for k in kept_rects)
+            u = union_bbox([b.bbox for b in g["blocks"]])
+            area = rect_area(u) or 1.0
+            contained = any(intersect_area(u, k) / area >= 0.55 for k in kept_rects)
             g["draw"] = not contained
             if contained:
                 log.debug("suppressing overlapping TU %s (inside a larger region)", g["tu"].id)
@@ -397,7 +398,7 @@ class Renderer:
         #    so two Korean lines never print into the same strip.
         drawn = [g for g in groups.values() if g.get("draw", True)]
         for g in drawn:
-            g["rect"] = list(_union_bbox([b.bbox for b in g["blocks"]]))
+            g["rect"] = list(union_bbox([b.bbox for b in g["blocks"]]))
         _tile_column_overlaps([g["rect"] for g in drawn])
 
         for g in drawn:
@@ -696,23 +697,6 @@ def _is_scanned_page(page, ir_page) -> bool:
         except Exception:  # noqa: BLE001
             continue
     return False
-
-
-def _union_bbox(bboxes: list[list[float]]) -> list[float]:
-    return [
-        min(b[0] for b in bboxes), min(b[1] for b in bboxes),
-        max(b[2] for b in bboxes), max(b[3] for b in bboxes),
-    ]
-
-
-def _rect_area(b: list[float]) -> float:
-    return max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
-
-
-def _intersect_area(a: list[float], b: list[float]) -> float:
-    ix = min(a[2], b[2]) - max(a[0], b[0])
-    iy = min(a[3], b[3]) - max(a[1], b[1])
-    return max(0.0, ix) * max(0.0, iy)
 
 
 def _tile_column_overlaps(rects: list[list[float]]) -> None:
