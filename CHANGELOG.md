@@ -5,6 +5,20 @@ All notable changes to PaperKo are recorded here. Versioning follows
 under the **same** version number; the JSON-RPC `protocol_version` and IR
 `ir_version` are tracked separately.
 
+## [1.8.17] — 2026-10-29
+
+### Fixed
+- **Exported .hwpx carried the skeleton's bookmarks.** The bundled skeleton
+  (`hwpx/assets/default_skeleton.hwpx`) is a real Hancom document holding 88 of its own
+  bookmarks (names like `asad-v1.2-사용자-매뉴얼`, `ubuntu-24.04-설치`). The converter copies
+  skeleton paragraphs as templates, so those bookmarks rode along into every exported file and
+  appeared in Hangul's bookmark list (a two-paragraph document carried two). The converter now
+  strips every bookmark from the skeleton section right after parsing and before any template is
+  deep-copied — so a user-supplied skeleton is cleaned too. A bookmark is a `fieldBegin`
+  (type="BOOKMARK") paired with a `fieldEnd`; both are removed together, along with their empty
+  `hp:ctrl` shells, so Hangul never sees an unpaired field and declares the document damaged.
+  Body text is byte-identical. Adds `test_hwpx_bookmarks.py`. (NablaMD shares this converter.)
+
 ## [1.8.16] — 2026-10-28
 
 ### Fixed

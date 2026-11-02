@@ -841,6 +841,45 @@ def find_pic_template(section_root):
     return None
 
 
+# 뼈대에서 따라오는 **책갈피**를 걷어낸다.
+#
+# 뼈대는 한컴이 만든 진짜 문서라 그 문서의 책갈피가 88개 들어 있다 — 이름도
+# `asad-v1.2-사용자-매뉴얼` 처럼 남의 것이다. 문단을 **템플릿으로 복사해** 쓰므로 그것이
+# 만들어진 문서까지 따라와, 한글의 책갈피 목록에 엉뚱한 이름이 뜬다. 번역한 문서에는
+# 있을 까닭이 없다.
+#
+# 책갈피는 `fieldBegin`(type="BOOKMARK")과 짝이 되는 `fieldEnd` 로 이루어진다. **짝을
+# 함께** 지운다 — 한쪽만 남으면 한글이 "문서에 이상이 있다" 며 고쳐 연다.
+
+def strip_bookmarks(root):
+    """책갈피 필드를 짝째로 걷어낸다. 지운 개수를 돌려준다."""
+    parents = {child: parent for parent in root.iter() for child in parent}
+
+    begin_ids = set()
+    doomed = []
+    for el in root.iter(f'{HP}fieldBegin'):
+        if el.get('type') == 'BOOKMARK':
+            if el.get('id'):
+                begin_ids.add(el.get('id'))
+            doomed.append(el)
+    for el in root.iter(f'{HP}fieldEnd'):
+        if el.get('beginIDRef') in begin_ids:
+            doomed.append(el)
+
+    for el in doomed:
+        parent = parents.get(el)
+        if parent is None:
+            continue
+        parent.remove(el)
+        # 껍데기만 남은 `hp:ctrl` 은 둘 까닭이 없다.
+        if parent.tag == f'{HP}ctrl' and len(parent) == 0:
+            grand = parents.get(parent)
+            if grand is not None:
+                grand.remove(parent)
+
+    return len(doomed)
+
+
 def load_equation_template():
     """assets/equation_template.xml에서 수식 run 템플릿 로드."""
     template_path = os.path.join(
@@ -1335,6 +1374,13 @@ def convert(docx_path, skeleton_hwpx_path, output_hwpx_path, work_dir=None, verb
         section_path = os.path.join(work_dir, 'Contents', 'section0.xml')
         tree = ET.parse(section_path)
         root = tree.getroot()
+
+        # 뼈대 원본 문서의 책갈피를 먼저 걷어낸다. 여기서 치워야 아래에서 뜨는
+        # 템플릿(deepcopy)이 깨끗하고, 사용자가 제 뼈대를 넣어도 같다.
+        removed = strip_bookmarks(root)
+        if verbose and removed:
+            print(f"[skeleton] 책갈피 {removed}개 제거")
+
         paragraphs = list(root)
 
         # 그림 템플릿 (skeleton에 있으면 활용, 없으면 직접 생성)

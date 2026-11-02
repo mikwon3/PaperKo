@@ -14,7 +14,7 @@
     !define INFO_PRODUCTNAME "PaperKo"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "1.8.16"
+    !define INFO_PRODUCTVERSION "1.8.17"
 !endif
 !ifndef INFO_COPYRIGHT
     !define INFO_COPYRIGHT "© 2026 Minho Kwon · AGPL-3.0"

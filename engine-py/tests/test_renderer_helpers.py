@@ -1,13 +1,11 @@
+from translate_engine.geometry import intersect_area, rect_area, union_bbox
 from translate_engine.ir import Block, StyleSummary
 from translate_engine.layout import Column, _detect_columns, _link_continuations
 from translate_engine.renderer import (
     Renderer,
     RenderOptions,
-    _intersect_area,
-    _rect_area,
     _strip_math_delims,
     _tile_column_overlaps,
-    _union_bbox,
 )
 
 
@@ -31,23 +29,23 @@ def _blk(typ, align):
 
 
 def test_rect_and_intersect_area():
-    assert _rect_area([0, 0, 10, 20]) == 200
-    assert _rect_area([10, 10, 0, 0]) == 0          # degenerate → 0, not negative
-    assert _intersect_area([0, 0, 10, 10], [5, 5, 15, 15]) == 25
-    assert _intersect_area([0, 0, 10, 10], [20, 20, 30, 30]) == 0  # disjoint
+    assert rect_area([0, 0, 10, 20]) == 200
+    assert rect_area([10, 10, 0, 0]) == 0          # degenerate → 0, not negative
+    assert intersect_area([0, 0, 10, 10], [5, 5, 15, 15]) == 25
+    assert intersect_area([0, 0, 10, 10], [20, 20, 30, 30]) == 0  # disjoint
 
 
 def test_overlap_containment_ratio():
     # A heading box fully inside a paragraph's union (the OCR double-layer / sandwiched
     # case): the smaller region is ≥55% contained, so it would be suppressed.
-    paragraph = _union_bbox([[80, 310, 410, 420], [80, 420, 410, 540]])  # y 310..540
+    paragraph = union_bbox([[80, 310, 410, 420], [80, 420, 410, 540]])  # y 310..540
     heading = [90, 419, 170, 430]                                        # sits inside it
-    ratio = _intersect_area(heading, paragraph) / (_rect_area(heading) or 1.0)
+    ratio = intersect_area(heading, paragraph) / (rect_area(heading) or 1.0)
     assert ratio >= 0.55
     # Two side-by-side columns are NOT contained in each other → both kept.
     left = [40, 60, 300, 700]
     right = [320, 60, 580, 700]
-    assert _intersect_area(left, right) == 0
+    assert intersect_area(left, right) == 0
 
 
 def _hblk(typ, text, h=11.0, fs=10.6):
